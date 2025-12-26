@@ -29,8 +29,8 @@ get-stations: fn { } {
     
 
 ; Much of the Environment Canada documentation refers to "Climate ID", but the actual data retrieval uses "stationID"
-print "Enter the Name or stationID for the weather station you are interested in."
-station:: input "Name/ID: "
+; print "Enter the Name or stationID for the weather station you are interested in."
+; station:: input "Name/ID: "
 
 
 ; only get the list if we haven't got it
