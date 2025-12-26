@@ -1,0 +1,40 @@
+; ; Gets the page containing the introductory documents and saves its links to the current directory
+; Open\append %links.html ::links
+; Get https://ryelang.org/meet_rye
+;    |Write* %page.html
+;    |reader
+;    |Parse-html {
+;        <a> [ .Attr? 'href |Write\string* links ]
+;    }
+
+; ; Loads each link and if it contains "TableOfContents" appends to a file
+; Open\append %meet_rye.html :meet_rye
+; Open %page.html
+;     |reader
+;     |Parse-html {
+;         <a> [ .Attr? 'href ::uri
+;             |to-string .contains "https://ryelang.org/meet_rye"
+;             |if {
+;                 uri .to-uri |Get .to-string ::page .contains "TableOfContents"
+;                 |if { 
+;                     page |Write\string* meet_rye 
+;                 }
+;             } 
+;         ]
+;     }
+
+; ; Creates a directory tree in the current directory
+; a:: split "one/two/three" "/"
+; ; os/mkdir has unexpected behaviour. It operates ONLY on the parent of the current directory and will not accept a fully qualified path
+; path:: "Rye/"
+
+; for a { ++ "/" | .append! 'path |to-uri .os/mkdir }
+
+; ; Get input from user. It's better to use "display-input" (and "display-date-input"), because they have more options
+; capitalize input "First Name: " :first
+; capitalize input "Last Name: " :last
+; prns [ "Hello," first last ]
+
+Get https://climate.weather.gc.ca/climate_data/bulk_data_e.html?format=csv&stationID=1706&Year=1998&timeframe=2&submit=Download+Data
+    |Write* %Yellowknife-1998.csv
+    

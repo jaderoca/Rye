@@ -1,0 +1,44 @@
+; Saves Environment Canada weather station list to a CSV file without extraneous comments
+
+
+stations-source: to-uri "https://collaboration.cmc.ec.gc.ca/cmc/climate/Get_More_Data_Plus_de_donnees/Station%20Inventory%20EN.csv"
+destination:: "StationList.csv"
+
+get-stations: fn { } {
+    destination:: to-uri destination
+    ; download the list into a block with each line as a separate element
+    source: Get stations-source .split newline
+    ; since we lose the new lines by splitting, we'll need to add them back in to create a properly structured CSV file
+
+    ; write the header row + a new line to the file (writing like this will create or overwrite the file)
+    Write destination ( first rest\from source 3 ) .ln
+
+    ; open the file in append mode so that further writes will add to the file instead of overwriting it
+    destination:: Open\append destination
+
+    ; append the rest of the rows with a new line to the file
+    for rest\from source 4 { .ln |Write\string* destination }
+}
+
+
+; I thought about getting the list only if the user did not know the climateID for the desired weather station.
+; However, I realized that having the list made it possible to check for a valid climateID to avoid getting a blank weather table.
+; I'll still allow the user to enter a climateID directly, but I'll validate it against the list before hitting the internet.
+; Having the list on hand also makes it easier for the user to locate a climateID by entering a station name
+    ; instead of scrolling through over 8000 entries to find it.
+    
+
+; Much of the Environment Canada documentation refers to "Climate ID", but the actual data retrieval uses "stationID"
+print "Enter the Name or stationID for the weather station you are interested in."
+station:: input "Name/ID: "
+
+
+; only get the list if we haven't got it
+either ( os/ls\ destination |length? ) .is-zero {
+    get-stations
+} {
+    print "The station list already exists. Do you want to refresh it?"
+    refresh: display { "No. Do not refresh the list of stations." "Yes. Refresh the list of stations." } 
+    if contains refresh "Yes" { get-stations }
+}
+
