@@ -2,24 +2,29 @@
 
 
 stations-source: to-uri "https://collaboration.cmc.ec.gc.ca/cmc/climate/Get_More_Data_Plus_de_donnees/Station%20Inventory%20EN.csv"
-destination:: "StationList.csv"
+stations-filename: "StationList.csv"
 
-get-stations: fn { } {
-    destination:: to-uri destination
+
+; downloads a CSV from and saves it to disc
+; some CSVs have instructions or other stuff before the header row (column names), so we want to skip those
+get-csv: fn { source-uri destination-file skip-lines } {
     ; download the list into a block with each line as a separate element
-    source: Get stations-source .split newline
+    source: Get source-uri .split newline
     ; since we lose the new lines by splitting, we'll need to add them back in to create a properly structured CSV file
 
     ; write the header row + a new line to the file (writing like this will create or overwrite the file)
-    Write destination ( first rest\from source 3 ) .ln
+    Write destination-file ( first rest\from source skip-lines ) .ln
 
     ; open the file in append mode so that further writes will add to the file instead of overwriting it
-    destination:: Open\append destination
+    destination: Open\append destination-file
 
     ; append the rest of the rows with a new line to the file
-    for rest\from source 4 { .ln |Write\string* destination }
+    for rest\from source inc skip-lines { .ln |Write\string* destination }
 }
 
+get-stations: fn { } {
+    get-csv stations-source to-uri stations-filename 3 ; the column names don't start until line 4 of the file
+}
 
 ; I thought about getting the list only if the user did not know the climateID for the desired weather station.
 ; However, I realized that having the list made it possible to check for a valid climateID to avoid getting a blank weather table.
@@ -34,7 +39,7 @@ get-stations: fn { } {
 
 
 ; only get the list if we haven't got it
-either ( os/ls\ destination |length? ) .is-zero {
+either ( os/ls\ stations-filename |length? ) .is-zero {
     get-stations
 } {
     print "The station list already exists. Do you want to refresh it?"
