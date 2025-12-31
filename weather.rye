@@ -3,40 +3,50 @@
 
 stations-source: to-uri "https://collaboration.cmc.ec.gc.ca/cmc/climate/Get_More_Data_Plus_de_donnees/Station%20Inventory%20EN.csv"
 stations-filename: "StationList.csv"
+daily-source:: "https://climate.weather.gc.ca/climate_data/bulk_data_e.html?format=csv&stationID={stationID}&Year={year}&timeframe=2&submit=Download+Data"
 
 
 ; downloads a CSV from and saves it to disc
 ; some CSVs have instructions or other stuff before the header row (column names), so we want to skip those
-get-csv: fn { source-uri destination-file skip-lines } {
+; sometimes we want to create or replace a file. Sometimes we want to just append to an existing file
+; some source files are structured such that we need to add newlines when appending additional rows
+get-csv: fn { source-uri destination-file skip-lines new-file needs-newlines } {
     ; download the list into a block with each line as a separate element
     source: Get source-uri .split newline
-    ; since we lose the new lines by splitting, we'll need to add them back in to create a properly structured CSV file
-
-    ; write the header row + a new line to the file (writing like this will create or overwrite the file)
-    Write destination-file ( first rest\from source skip-lines ) .ln
+    
+    ; When it's a new file, write the header row (writing like this will create or overwrite the file)
+    if new-file {
+        Write destination-file ( first rest\from source skip-lines )
+    }
 
     ; open the file in append mode so that further writes will add to the file instead of overwriting it
     destination: Open\append destination-file
 
-    ; append the rest of the rows with a new line to the file
-    for rest\from source inc skip-lines { .ln |Write\string* destination }
+
+    for rest\from source 
+        either new-file { inc skip-lines } { skip-lines } ; skip an extra line to avoid the header row when appending to a pre-existing file
+    { ::row 
+        either needs-newlines { newline ++ row } { row }
+        |Write\string* destination
+    }
 }
 
 get-stations: fn { } {
-    get-csv stations-source to-uri stations-filename 3 ; the column names don't start until line 4 of the file
+    get-csv stations-source 
+        to-uri stations-filename 
+        3 ; skip lines
+        true ; start by creating a new file or overwriting the existing one
+        true ; the source file is structured in a way that we need to add newlines to create rows
+
 }
 
+
 ; I thought about getting the list only if the user did not know the climateID for the desired weather station.
-; However, I realized that having the list made it possible to check for a valid climateID to avoid getting a blank weather table.
+; However, I realized that having the list made it possible to check for a valid climateID to avoid errors or blank results.
 ; I'll still allow the user to enter a climateID directly, but I'll validate it against the list before hitting the internet.
 ; Having the list on hand also makes it easier for the user to locate a climateID by entering a station name
     ; instead of scrolling through over 8000 entries to find it.
     
-
-; Much of the Environment Canada documentation refers to "Climate ID", but the actual data retrieval uses "stationID"
-; print "Enter the Name or stationID for the weather station you are interested in."
-; station:: input "Name/ID: "
-
 
 ; only get the list if we haven't got it
 either ( os/ls\ stations-filename |length? ) .is-zero {
@@ -44,6 +54,32 @@ either ( os/ls\ stations-filename |length? ) .is-zero {
 } {
     print "The station list already exists. Do you want to refresh it?"
     refresh: display { "No. Do not refresh the list of stations." "Yes. Refresh the list of stations." } 
-    if contains refresh "Yes" { get-stations }
+    if refresh .contains "Yes" { get-stations }
+}
+
+station-name: capitalize input "Station Name: "
+print ""
+
+; Much of the Environment Canada literature refers to "Climate ID", but the actual data retrieval uses "stationID"
+; They are actually two different things, so I'll follow the data retrieval naming
+station-ID: input "Station ID: "
+print ""
+year-first: to-integer input "First Year: "
+print ""
+year-last: to-integer input "Last Year: "
+print ""
+
+
+; use a set-word on the principle of storing a result rather than continuously recalculating to get the same result
+station-file: to-uri station-name ++ "_" ++ to-string year-first ++
+    ( either year-first = year-last { "" } { "-" ++ to-string year-last } ) ++ "_Daily.csv"
+
+
+for range year-first  year-last { ::year 
+    get-csv to-uri ( daily-source .replace "{stationID}" station-ID ) .replace "{year}" to-string year
+        station-file
+        either year = year-first { 0 } { 1 } ; column names start with the first line so we need to skip that when appending
+        year = year-first ; true starts a new file, false appends to the existing file
+        false ; the source file is structured in a way that doesn't require a newline to create rows
 }
 
