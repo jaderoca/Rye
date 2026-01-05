@@ -83,22 +83,6 @@ last-year: get-row-value station-row "LastYear"
 
 
 
-
-
-
-; station-name: capitalize input "Station Name: "
-; print ""
-
-; ; Much of the Environment Canada literature refers to "Climate ID", but the actual data retrieval uses "stationID"
-; ; They are actually two different things, so I'll follow the data retrieval naming
-; station-ID: input "Station ID: "
-; print ""
-; first-year: to-integer input "First Year: "
-; print ""
-; last-year: to-integer input "Last Year: "
-; print ""
-
-
 ; use a set-word on the principle of storing a result rather than continuously recalculating to get the same result
 station-file: to-uri station-name ++ "_" ++ first-year ++
     ( either first-year = last-year { "" } { "-" ++ last-year } ) ++ "_Daily.csv"
