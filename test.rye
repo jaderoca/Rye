@@ -1,3 +1,6 @@
+; Rye version 0.0.87
+
+; ; Stores the documents locally so that I don't have to keep hitting my crappy cell connection
 ; ; Gets the page containing the introductory documents and saves its links to the current directory
 ; Open\append %links.html ::links
 ; Get https://ryelang.org/meet_rye
@@ -23,6 +26,8 @@
 ;         ]
 ;     }
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ; ; Creates a directory tree in the current directory
 ; a:: split "one/two/three" "/"
 ; ; os/mkdir has unexpected behaviour. It operates ONLY on the parent of the current directory and will not accept a fully qualified path
@@ -35,6 +40,53 @@
 ; capitalize input "Last Name: " :last
 ; prns [ "Hello," first last ]
 
-Get https://climate.weather.gc.ca/climate_data/bulk_data_e.html?format=csv&stationID=1706&Year=1998&timeframe=2&submit=Download+Data
-    |Write* %Yellowknife-1998.csv
-    
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Gets bulk weather data from Environment Canada
+; daily-data-source: "https://climate.weather.gc.ca/climate_data/bulk_data_e.html?format=csv&stationID={stationID}&Year={year}&timeframe=2&submit=Download+Data"
+; stationName: capitalize input "Station Name: "
+; print ""
+; stationID: input "Station ID: "
+; print ""
+; year-first: to-integer input "First Year: "
+; print ""
+; year-last: to-integer input "Last Year: "
+; print ""
+
+; ; print daily-data-source
+
+
+; for range year-first year-last { ::year 
+;     Get to-uri ( daily-data-source .replace "{stationID}" stationID ) .replace "{year}" to-string year
+;         |Write* to-uri stationName ++ "-" ++ year ++ "-Daily.csv"
+; }
+; ; Get to-uri daily-data-source |Write* destination-file
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; using an input to filter a table, then get a column value for the selected row
+ 
+; ; there doesn't seem to be any way to treat a single row (TableRow) as a kind of one-row table or a collection
+; ;   it can be converted to a string, though, and there is enough structure to allow for easily getting
+; ;   a columns value with basic string processing
+; ;   takes a TableRow and a string containing the column name
+; get-row-value: fn { row column } {
+;     c: column ++ ": {"
+;     s:: row .to-string
+;     s:: rest\from s ( index? s c ) + ( length? c )
+;     s:: head s index? s "}"
+; }
+; n: input "Enter Station Name: "
+; t: load\csv %StationList.csv
+;     .columns? { "Name" "DLY First Year" :FirstYear "DLY Last Year" :LastYear "Station ID" :StationID }
+;     |where-contains 'Name to-upper n |order-by 'LastYear 'desc
+
+; c: "StationID"
+; r: display t
+
+
+; stationID: get-row-value r c
+; print stationID
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+

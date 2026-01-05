@@ -40,11 +40,21 @@ get-stations: fn { } {
 
 }
 
+; there doesn't seem to be any way to treat a single row (TableRow) as a kind of one-row table or a collection
+;   it can be converted to a string, though, and there is enough structure to allow for easily getting
+;   a columns value with basic string processing
+;   takes a TableRow and a string containing the column name
+get-row-value: fn { row column } {
+    c: column ++ ": {"
+    s:: row .to-string
+    s:: rest\from s ( index? s c ) + ( length? c )
+    s:: head s index? s "}"
+}
 
-; I thought about getting the list only if the user did not know the climateID for the desired weather station.
-; However, I realized that having the list made it possible to check for a valid climateID to avoid errors or blank results.
-; I'll still allow the user to enter a climateID directly, but I'll validate it against the list before hitting the internet.
-; Having the list on hand also makes it easier for the user to locate a climateID by entering a station name
+; I thought about getting the list only if the user did not know the stationID for the desired weather station.
+; However, I realized that having the list made it possible to check for a valid stationID to avoid errors or blank results.
+; I'll still allow the user to enter a stationID directly, but I'll validate it against the list before hitting the internet.
+; Having the list on hand also makes it easier for the user to locate a stationID by entering a station name
     ; instead of scrolling through over 8000 entries to find it.
     
 
@@ -57,29 +67,48 @@ either ( os/ls\ stations-filename |length? ) .is-zero {
     if refresh .contains "Yes" { get-stations }
 }
 
-station-name: capitalize input "Station Name: "
-print ""
 
-; Much of the Environment Canada literature refers to "Climate ID", but the actual data retrieval uses "stationID"
-; They are actually two different things, so I'll follow the data retrieval naming
-station-ID: input "Station ID: "
-print ""
-year-first: to-integer input "First Year: "
-print ""
-year-last: to-integer input "Last Year: "
-print ""
+station-name: capitalize input "Enter Station Name: "
+print "" print ""
+station-list: load\csv %StationList.csv
+    .columns? { "Name" "DLY First Year" :FirstYear "DLY Last Year" :LastYear "Station ID" :StationID }
+    |where-contains 'Name to-upper station-name |order-by 'LastYear 'desc
+
+station-row: display station-list
+
+
+station-id: get-row-value station-row "StationID"
+first-year: get-row-value station-row "FirstYear"
+last-year: get-row-value station-row "LastYear"
+
+
+
+
+
+
+; station-name: capitalize input "Station Name: "
+; print ""
+
+; ; Much of the Environment Canada literature refers to "Climate ID", but the actual data retrieval uses "stationID"
+; ; They are actually two different things, so I'll follow the data retrieval naming
+; station-ID: input "Station ID: "
+; print ""
+; first-year: to-integer input "First Year: "
+; print ""
+; last-year: to-integer input "Last Year: "
+; print ""
 
 
 ; use a set-word on the principle of storing a result rather than continuously recalculating to get the same result
-station-file: to-uri station-name ++ "_" ++ to-string year-first ++
-    ( either year-first = year-last { "" } { "-" ++ to-string year-last } ) ++ "_Daily.csv"
+station-file: to-uri station-name ++ "_" ++ first-year ++
+    ( either first-year = last-year { "" } { "-" ++ last-year } ) ++ "_Daily.csv"
 
 
-for range year-first  year-last { ::year 
-    get-csv to-uri ( daily-source .replace "{stationID}" station-ID ) .replace "{year}" to-string year
+for range to-integer first-year to-integer last-year { ::year 
+    get-csv to-uri ( daily-source .replace "{stationID}" station-id ) .replace "{year}" to-string year
         station-file
-        either year = year-first { 0 } { 1 } ; column names start with the first line so we need to skip that when appending
-        year = year-first ; true starts a new file, false appends to the existing file
+        either year = to-integer first-year { 0 } { 1 } ; column names start with the first line so we need to skip that when appending
+        year = to-integer first-year ; true starts a new file, false appends to the existing file
         false ; the source file is structured in a way that doesn't require a newline to create rows
 }
 
