@@ -3,7 +3,7 @@
 
 stations-source: to-uri "https://collaboration.cmc.ec.gc.ca/cmc/climate/Get_More_Data_Plus_de_donnees/Station%20Inventory%20EN.csv"
 stations-filename: "StationList.csv"
-daily-source:: "https://climate.weather.gc.ca/climate_data/bulk_data_e.html?format=csv&stationID={stationID}&Year={year}&timeframe=2&submit=Download+Data"
+daily-source:: "https://climate.weather.gc.ca/climate_data/bulk_data_e.html?format=csv&stationID={stationID}&Year={year}&Month=1&Day=14&timeframe=2&submit=Download+Data"
 
 
 ; downloads a CSV from and saves it to disc
@@ -27,8 +27,10 @@ get-csv: fn { source-uri destination-file skip-lines new-file needs-newlines } {
         either new-file { inc skip-lines } { skip-lines } ; skip an extra line to avoid the header row when appending to a pre-existing file
     { ::row 
         either needs-newlines { newline ++ row } { row }
-        |Write\string* destination
+        |Write* destination
     }
+
+    Close destination
 }
 
 get-stations: fn { } {
@@ -68,31 +70,42 @@ either ( os/ls\ stations-filename |length? ) .is-zero {
 }
 
 
+; filter the station list to make it easier to pick the specific station of interest
 station-name: capitalize input "Enter Station Name: "
 print "" print ""
-station-list: load\csv %StationList.csv
+station-list: Load\csv %StationList.csv
     .columns? { "Name" "DLY First Year" :FirstYear "DLY Last Year" :LastYear "Station ID" :StationID }
     |where-contains 'Name to-upper station-name |order-by 'LastYear 'desc
 
+; display the filtered list for the user to choose from and retrieve the relevant data
 station-row: display station-list
 
-
+file-name: replace get-row-value station-row "Name" " " "_"
 station-id: get-row-value station-row "StationID"
-first-year: get-row-value station-row "FirstYear"
-last-year: get-row-value station-row "LastYear"
+first-year:: get-row-value station-row "FirstYear" ; mod word because we'll be changing it to a user-selected value later
+last-year:: get-row-value station-row "LastYear" ; mod word because we'll be changing it to a user-selected value later
 
+; build and display a list of years for the user to choose from
+s:: ""
+year-list: for range to-integer first-year to-integer last-year { ::y append! to-string y ++ ","  's } |trim\ "," |split ","
+print "Select year to start:"
+first-year:: display year-list
+print "Select year to end:"
+last-year:: display reverse year-list ; reverse the list to put most recent years at the top
 
-
-; use a set-word on the principle of storing a result rather than continuously recalculating to get the same result
-station-file: to-uri station-name ++ "_" ++ first-year ++
+; define the file name based on user selections, then go get the requested data
+station-file: to-uri file-name ++ "_" ++ first-year ++
     ( either first-year = last-year { "" } { "-" ++ last-year } ) ++ "_Daily.csv"
 
 
 for range to-integer first-year to-integer last-year { ::year 
     get-csv to-uri ( daily-source .replace "{stationID}" station-id ) .replace "{year}" to-string year
+    ; print ( daily-source .replace "{stationID}" station-id ) .replace "{year}" to-string year
         station-file
         either year = to-integer first-year { 0 } { 1 } ; column names start with the first line so we need to skip that when appending
         year = to-integer first-year ; true starts a new file, false appends to the existing file
         false ; the source file is structured in a way that doesn't require a newline to create rows
 }
 
+print ( trim\ to-string os/cwd? "%" ) ++ "/" ++ ( trim\ to-string station-file "%" ) ++ " has been created."
+print "Most spreadsheet and database programs have the ability to import .CSV files as tables."
