@@ -1,10 +1,8 @@
 ; Saves Environment Canada weather station list to a CSV file without extraneous comments
 
-
-stations-source: to-uri "https://collaboration.cmc.ec.gc.ca/cmc/climate/Get_More_Data_Plus_de_donnees/Station%20Inventory%20EN.csv"
-stations-filename: "StationList.csv"
-daily-source:: "https://climate.weather.gc.ca/climate_data/bulk_data_e.html?format=csv&stationID={stationID}&Year={year}&Month=1&Day=14&timeframe=2&submit=Download+Data"
-
+stations-source: https://collaboration.cmc.ec.gc.ca/cmc/climate/Get_More_Data_Plus_de_donnees/Station%20Inventory%20EN.csv
+stations-filename: %StationList.csv
+daily-source: "https://climate.weather.gc.ca/climate_data/bulk_data_e.html?format=csv&stationID=%v&Year=%d&Month=1&Day=14&timeframe=2&submit=Download+Data"
 
 ; downloads a CSV from and saves it to disc
 ; some CSVs have instructions or other stuff before the header row (column names), so we want to skip those
@@ -12,7 +10,7 @@ daily-source:: "https://climate.weather.gc.ca/climate_data/bulk_data_e.html?form
 ; some source files are structured such that we need to add newlines when appending additional rows
 get-csv: fn { source-uri destination-file skip-lines new-file needs-newlines } {
     ; download the list into a block with each line as a separate element
-    source: Get source-uri .split newline
+    source: Get source-uri |split newline
     
     ; When it's a new file, write the header row (writing like this will create or overwrite the file)
     if new-file {
@@ -22,75 +20,63 @@ get-csv: fn { source-uri destination-file skip-lines new-file needs-newlines } {
     ; open the file in append mode so that further writes will add to the file instead of overwriting it
     destination: Open\append destination-file
 
-
     for rest\from source 
-        either new-file { inc skip-lines } { skip-lines } ; skip an extra line to avoid the header row when appending to a pre-existing file
+	either new-file { inc skip-lines } { skip-lines } ; skip an extra line to avoid the header row when appending to a pre-existing file
     { ::row 
         either needs-newlines { newline ++ row } { row }
         |Write* destination
-    }
-
+    }	
     Close destination
 }
 
 get-stations: fn { } {
-    get-csv stations-source 
-        to-uri stations-filename 
+	term/spin-it "Loading a list of stations" {
+		get-csv stations-source 
+        stations-filename 
         3 ; skip lines
         true ; start by creating a new file or overwriting the existing one
         true ; the source file is structured in a way that we need to add newlines to create rows
-
-}
-
-; there doesn't seem to be any way to treat a single row (TableRow) as a kind of one-row table or a collection
-;   it can be converted to a string, though, and there is enough structure to allow for easily getting
-;   a columns value with basic string processing
-;   takes a TableRow and a string containing the column name
-get-row-value: fn { row column } {
-    c: column ++ ": {"
-    s:: row .to-string
-    s:: rest\from s ( index? s c ) + ( length? c )
-    s:: head s index? s "}"
+	}
 }
 
 ; I thought about getting the list only if the user did not know the stationID for the desired weather station.
 ; However, I realized that having the list made it possible to check for a valid stationID to avoid errors or blank results.
-; I'll still allow the user to enter a stationID directly, but I'll validate it against the list before hitting the internet.
-; Having the list on hand also makes it easier for the user to locate a stationID by entering a station name
-    ; instead of scrolling through over 8000 entries to find it.
+; I was going to allow direct entry of the stationID, but I like the way this works, so I'll just stick with it.
     
-
 ; only get the list if we haven't got it
-either ( os/ls\ stations-filename |length? ) .is-zero {
-    get-stations
-} {
+either stations-filename .Does-exist {
     print "The station list already exists. Do you want to refresh it?"
-    refresh: display { "No. Do not refresh the list of stations." "Yes. Refresh the list of stations." } 
-    if refresh .contains "Yes" { get-stations }
+    display-selection [ false "No. Do not refresh the list of stations." true "Yes. Refresh the list of stations." ] 0
+    |if { get-stations }
+} {
+    get-stations
 }
 
-
 ; filter the station list to make it easier to pick the specific station of interest
-station-name: capitalize input "Enter Station Name: "
+station-name: input "Enter Station Name: "
 print "" print ""
+
 station-list: Load\csv %StationList.csv
-    .columns? { "Name" "DLY First Year" :FirstYear "DLY Last Year" :LastYear "Station ID" :StationID }
-    |where-contains 'Name to-upper station-name |order-by 'LastYear 'desc
+|autotype 0.90
+|columns? { "Name" "DLY First Year" :FirstYear "DLY Last Year" :LastYear "Station ID" :StationID }
+|where-contains 'Name to-upper station-name |order-by 'LastYear 'desc
 
 ; display the filtered list for the user to choose from and retrieve the relevant data
 station-row: display station-list
 
-file-name: replace get-row-value station-row "Name" " " "_"
-station-id: get-row-value station-row "StationID"
-first-year:: get-row-value station-row "FirstYear" ; mod word because we'll be changing it to a user-selected value later
-last-year:: get-row-value station-row "LastYear" ; mod word because we'll be changing it to a user-selected value later
+file-name: station-row -> "Name" |replace " " "_"
+station-id: to-string ( station-row -> "StationID" ) ; looks numeric, but only ever used as a string
+first-year:: station-row -> "FirstYear" ; mod word because we'll be changing it to a user-selected value later
+last-year:: station-row -> "LastYear" ; mod word because we'll be changing it to a user-selected value later
 
 ; build and display a list of years for the user to choose from
-s:: ""
-year-list: for range to-integer first-year to-integer last-year { ::y append! to-string y ++ ","  's } |trim\ "," |split ","
+year-list:: range first-year last-year
+
 print "Select year to start:"
 first-year:: display year-list
+
 print "Select year to end:"
+year-list:: range first-year last-year ; exclude years earlier than first-year
 last-year:: display reverse year-list ; reverse the list to put most recent years at the top
 
 ; define the file name based on user selections, then go get the requested data
@@ -98,14 +84,15 @@ station-file: to-uri file-name ++ "_" ++ first-year ++
     ( either first-year = last-year { "" } { "-" ++ last-year } ) ++ "_Daily.csv"
 
 
-for range to-integer first-year to-integer last-year { ::year 
-    get-csv to-uri ( daily-source .replace "{stationID}" station-id ) .replace "{year}" to-string year
-    ; print ( daily-source .replace "{stationID}" station-id ) .replace "{year}" to-string year
-        station-file
-        either year = to-integer first-year { 0 } { 1 } ; column names start with the first line so we need to skip that when appending
-        year = to-integer first-year ; true starts a new file, false appends to the existing file
+for range first-year last-year { ::year
+	term/spin-it join [ "Loading data for " file-name ", year " year ] {
+		get-csv to-uri ( [ station-id year ] .format daily-source )
+	    station-file
+        either year = first-year { 0 } { 1 } ; column names start with the first line so we need to skip that when appending
+        year = first-year ; true starts a new file, false appends to the existing file
         false ; the source file is structured in a way that doesn't require a newline to create rows
+	}
 }
 
-print ( trim\ to-string os/cwd? "%" ) ++ "/" ++ ( trim\ to-string station-file "%" ) ++ " has been created."
+print join [ os/cwd? .to-string "/" to-string station-file " has been created." ]
 print "Most spreadsheet and database programs have the ability to import .CSV files as tables."
