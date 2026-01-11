@@ -8,35 +8,37 @@ daily-source: "https://climate.weather.gc.ca/climate_data/bulk_data_e.html?forma
 ; some CSVs have instructions or other stuff before the header row (column names), so we want to skip those
 ; sometimes we want to create or replace a file. Sometimes we want to just append to an existing file
 ; some source files are structured such that we need to add newlines when appending additional rows
-get-csv: fn { source-uri destination-file skip-lines new-file needs-newlines } {
-    ; download the list into a block with each line as a separate element
-    source: Get source-uri |split newline
-    
-    ; When it's a new file, write the header row (writing like this will create or overwrite the file)
-    if new-file {
-        Write destination-file ( first rest\from source skip-lines )
+; some files take long enough to download that a progress message makes sense
+get-csv: fn { source-uri destination-file skip-lines new-file needs-newlines loading-message } {
+    term/spin-it loading-message {
+        ; download the list into a block with each line as a separate element
+        source: Get source-uri |split newline
+        
+        ; When it's a new file, write the header row (writing like this will create or overwrite the file)
+        if new-file {
+            Write destination-file ( first rest\from source skip-lines )
+        }
+
+        ; open the file in append mode so that further writes will add to the file instead of overwriting it
+        destination: Open\append destination-file
+
+        for rest\from source 
+        either new-file { inc skip-lines } { skip-lines } ; skip an extra line to avoid the header row when appending to a pre-existing file
+        { ::row 
+            either needs-newlines { newline ++ row } { row }
+            |Write* destination
+        }	
+        Close destination
     }
-
-    ; open the file in append mode so that further writes will add to the file instead of overwriting it
-    destination: Open\append destination-file
-
-    for rest\from source 
-	either new-file { inc skip-lines } { skip-lines } ; skip an extra line to avoid the header row when appending to a pre-existing file
-    { ::row 
-        either needs-newlines { newline ++ row } { row }
-        |Write* destination
-    }	
-    Close destination
 }
 
 get-stations: fn { } {
-	term/spin-it "Loading a list of stations" {
-		get-csv stations-source 
-        stations-filename 
-        3 ; skip lines
-        true ; start by creating a new file or overwriting the existing one
-        true ; the source file is structured in a way that we need to add newlines to create rows
-	}
+    get-csv stations-source 
+    stations-filename 
+    3 ; skip lines
+    true ; start by creating a new file or overwriting the existing one
+    true ; the source file is structured in a way that we need to add newlines to create rows
+    "Loading the list of stations"
 }
 
 ; I thought about getting the list only if the user did not know the stationID for the desired weather station.
@@ -85,13 +87,12 @@ station-file: to-uri file-name ++ "_" ++ first-year ++
 
 
 for range first-year last-year { ::year
-	term/spin-it join [ "Loading data for " file-name ", year " year ] {
-		get-csv to-uri ( [ station-id year ] .format daily-source )
-	    station-file
-        either year = first-year { 0 } { 1 } ; column names start with the first line so we need to skip that when appending
-        year = first-year ; true starts a new file, false appends to the existing file
-        false ; the source file is structured in a way that doesn't require a newline to create rows
-	}
+    get-csv to-uri ( [ station-id year ] .format daily-source )
+    station-file
+    either year = first-year { 0 } { 1 } ; column names start with the first line so we need to skip that when appending
+    year = first-year ; true starts a new file, false appends to the existing file
+    false ; the source file is structured in a way that doesn't require a newline to create rows
+    join [ "Loading data for " file-name ", year " year ]
 }
 
 print join [ os/cwd? .to-string "/" to-string station-file " has been created." ]
