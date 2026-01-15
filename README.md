@@ -31,6 +31,6 @@ The files have different structures:
 
 If that was all, there would be no problem. But there are a variety of other differences that complicate the preprocessing.
 
-This has complicated the function I use for retrieving data to the point that it has six parameters and is in need of more. In other words, it's looking more and more like a fully generic CSV processing function. That is niether desirable nor even really feasible given all the variety of CSV structures in the wild. I don't care about the general case, only the specific cases of the Environment Canada structures. Therefore, I'm trashing that generic function in favour of two highly-targeted ones. And since I'll only ever deal with those two structures, it may even be reasonable to just do everything in line without creating new functions.
+This has complicated the function I use for retrieving data to the point that it has six parameters and is in need of more. In other words, it's looking more and more like a fully generic CSV processing function. That is neither desirable nor even really feasible given all the variety of CSV structures in the wild. I don't care about the general case, only the specific cases of the Environment Canada structures. Therefore, I'm trashing that generic function in favour of two highly-targeted ones. And since I'll only ever deal with those two structures, it may even be reasonable to just do everything in line without creating new functions.
 
 Stay tuned!
