@@ -19,7 +19,7 @@ On completion, you will be shown the name and location of the generated file.
 
 Enjoy!
 
-**NOTE:** I have started a major rewrite of what I've got so far to dramatically simplify the code.
+**NOTE:** I have completed an almost complete rewrite to dramatically simplify the code. (And dealt with yet another CSV compatibility issue. And added some error avoidance.)
 
 Environment Canada provides two main CSV files:
 * A static file with the list of all the weather stations and basic information associated with those stations.
