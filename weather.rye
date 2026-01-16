@@ -19,9 +19,26 @@ stations-source: https://collaboration.cmc.ec.gc.ca/cmc/climate/Get_More_Data_Pl
 stations-filename: %StationList.csv
 daily-source: "https://climate.weather.gc.ca/climate_data/bulk_data_e.html?format=csv&stationID=%v&Year=%d&Month=1&Day=14&timeframe=2&submit=Download+Data"
 
-; Saves Environment Canada weather station list to a CSV file without extraneous comments
-get-stations: fn { } {
-    term/spin-it "Loading the list of stations. " {
+gap: fn { size } {
+    g:: ""
+    for range 1 size { g:: join [ g newline ] }
+}
+
+; I thought about getting the list only if the user did not know the stationID for the desired weather station.
+; However, I realized that having the list made it possible to check for a valid stationID to avoid errors or blank results.
+; I was going to allow direct entry of the stationID, but I like the way this works, so I'll just stick with it.
+    
+; only get the list if we haven't got it or it needs to be refreshed.
+refresh:: true
+if stations-filename .Does-exist {
+    print "The station list already exists. Do you want to refresh it?"
+    refresh:: ( flui/select dict [ "No" "Do not refresh the list of stations." "Yes" "Refresh the list of stations." ] ) = "Yes"
+}
+if refresh {
+    print newline
+     term/spin-it "Loading the list of stations. " {
+        ; I do this convoluted process because Environment Canada's file includes notes at the top that interfere with reading the data
+
         ; download the list into a block with each line as a separate element
         source: Get stations-source |split newline
         
@@ -35,24 +52,13 @@ get-stations: fn { } {
 
         Close destination
     }
+    print "\n Station List retrieved!"
 }
 
-; I thought about getting the list only if the user did not know the stationID for the desired weather station.
-; However, I realized that having the list made it possible to check for a valid stationID to avoid errors or blank results.
-; I was going to allow direct entry of the stationID, but I like the way this works, so I'll just stick with it.
-    
-; only get the list if we haven't got it
-either stations-filename .Does-exist {
-    print "The station list already exists. Do you want to refresh it?"
-    display-selection [ false "No. Do not refresh the list of stations." true "Yes. Refresh the list of stations." ] 0
-    |if { get-stations }
-} {
-    get-stations
-}
 
 ; filter the station list to make it easier to pick the specific station of interest
+print gap 3
 station-name: input "Enter Station Name: "
-print "" print ""
 
 station-list: Load\csv %StationList.csv
 |autotype 0.90
@@ -60,11 +66,12 @@ station-list: Load\csv %StationList.csv
 |where-contains 'Name to-upper station-name |order-by 'LastYear 'desc
 
 ; display the filtered list for the user to choose from and retrieve the relevant data
+print gap 3
 station-row: display station-list
 
 ; No point continuing if the user didn't select a station
 if not ( station-row .type? .to-string = "tablerowtype" ) {
-    exit "No station selected!"
+    exit "\n No station selected!"
 }
 
 file-name: station-row -> "Name" |replace " " "_"
@@ -80,36 +87,39 @@ last-year: min [ ( station-row -> "LastYear" ) ( year? now ) ]
 ; build and display a list of years for the user to choose from
 year-list:: range first-year last-year
 
+print gap 3
 print "Select year to start:"
 first: display year-list
 
 ; No point continuing if the user did not choose a year
 if not ( first .type? .to-string = "integer" ) {
-    exit "No year selected!"
+    exit "\n No year selected!"
 }
 
+print gap 3
 print "Select year to end:"
 year-list:: range first last-year ; exclude years earlier than first-year
 last: display reverse year-list ; reverse the list to put most recent years at the top
 
 ; No point continuing if the user did not choose a year
 if not ( last .type? .to-string = "integer" ) {
-    exit "No year selected!"
+    exit "\n No year selected!" 
 }
 
 ; define the file name based on user selections, then go get the requested data
 station-file: to-uri file-name ++ "_" ++ first ++
     ( either first = last { "" } { "-" ++ last } ) ++ "_Daily.csv"
 
-exists: station-file .Does-exist
 refresh:: true
-if exists {
+if station-file .Does-exist {
+     print gap 3
      print "The data file for this station already exists. Do you want to refresh it?"
-    refresh:: display-selection [ false "No. Do not refresh the data for this station." true "Yes. Refresh the data for this station." ] 0
+    refresh:: ( flui/select dict [ "No" "Do not refresh the data for this station." "Yes" "Refresh the data for this station." ] ) = "Yes"
 }
 
 if refresh {
     ; I don't know if using files to help with processing is sensible, but it's a LOT simpler than what I was doing before.
+    print newline
     term/spin-it "Getting station data." {
         Get to-uri [ station-id first ] .format daily-source |replace "\"" "" |Write* station-file
         station-table:: Load\csv station-file ; mod word because it seems like the easiest way to keep the table updated
@@ -120,8 +130,19 @@ if refresh {
             station-table:: station-table .add-rows temp-table .get-rows
         }
 
-        save\csv station-table station-file
+        Save\csv station-file station-table 
     }
 }
-print join [ os/cwd? .to-string "/" to-string station-file " has been created." ]
+print gap 3
+print join [ os/cwd? .to-string "/" to-string station-file " is ready to use." ]
 print "Most spreadsheet and database programs have the ability to import .CSV files as tables."
+print join [ newline newline newline ]
+print "XLSX files are a native Excel format, but are more portable to other applications than plain XLS files."
+print "Do you want this as an XLSX file, too?"
+
+if ( flui/select dict [ "Yes" "Give me an XLSX file, too." "No" "Do not give me an XLSX file." ] ) = "Yes" {
+    xlsx-file: to-uri join [ station-file .Stem? ".xlsx" ]
+    Load\csv station-file |Save\xlsx* xlsx-file
+    print join [ newline os/cwd? .to-string "/" to-string xlsx-file " is ready to use." ]
+}
+print "\n DONE!"
