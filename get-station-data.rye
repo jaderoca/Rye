@@ -1,63 +1,31 @@
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; This little program helps get the daily weather data from Environment Canada
-;
-; It starts by creating or refreshing the list of weather stations.
-; Once the list is retrieved, you will be asked for the name of a weather station
-; In general, that will be the name of a town.
-; There are over 8000 stations, past and present, so I strongly recommend typing something, otherwise you get the whole list.
-;
-; Once you've selected the station from the list, you'll be asked to provide a start year and end year.
-; The program will then submit the specifications to Environment Canada so they can generate the necessary file for download.
-; The file will be downloaded and you'll get a message telling you the name of the file and where to find it on your system.
-;
-; Note that Environment Canada's system generates separate files for each year. I combine all of the years into a single file for ease of use.
-;
-; Note that you should be able to press ESC to cancel input at any time.
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; ; This little program helps get the daily weather data from Environment Canada
+; ;
+; ; It starts by creating or refreshing the list of weather stations.
+; ; Once the list is retrieved, you will be asked for the name of a weather station
+; ; In general, that will be the name of a town.
+; ; There are over 8000 stations, past and present, so I strongly recommend typing something, otherwise you get the whole list.
+; ;
+; ; Once you've selected the station from the list, you'll be asked to provide a start year and end year.
+; ; The program will then submit the specifications to Environment Canada so they can generate the necessary file for download.
+; ; The file will be downloaded and you'll get a message telling you the name of the file and where to find it on your system.
+; ;
+; ; Note that Environment Canada's system generates separate files for each year. I combine all of the years into a single file for ease of use.
+; ;
+; ; Note that you should be able to press ESC to cancel input at any time.
+; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-stations-source: https://collaboration.cmc.ec.gc.ca/cmc/climate/Get_More_Data_Plus_de_donnees/Station%20Inventory%20EN.csv
-stations-filename: %StationList.csv
+; loads some utilities. See file for helpful comments
+u: context Load %utilities.rye
+
+; Make sure there is actually as station list file
+; When calling out to external code, it's a good idea to at least create an anonymous context to avoid name collisions
+private { do load %get-station-list.rye }
+
 daily-source: "https://climate.weather.gc.ca/climate_data/bulk_data_e.html?format=csv&stationID=%v&Year=%d&Month=1&Day=14&timeframe=2&submit=Download+Data"
-
-gap: fn { size } {
-    g:: ""
-    for range 1 size { g:: join [ g newline ] }
-}
-
-; I thought about getting the list only if the user did not know the stationID for the desired weather station.
-; However, I realized that having the list made it possible to check for a valid stationID to avoid errors or blank results.
-; I was going to allow direct entry of the stationID, but I like the way this works, so I'll just stick with it.
-    
-; only get the list if we haven't got it or it needs to be refreshed.
-refresh:: true
-if stations-filename .Does-exist {
-    print "The station list already exists. Do you want to refresh it?"
-    refresh:: ( flui/select dict [ "No" "Do not refresh the list of stations." "Yes" "Refresh the list of stations." ] ) = "Yes"
-}
-if refresh {
-    print newline
-     term/spin-it "Loading the list of stations. " {
-        ; I do this convoluted process because Environment Canada's file includes notes at the top that interfere with reading the data
-
-        ; download the list into a block with each line as a separate element
-        source: Get stations-source |split newline
-        
-        ; Write the header row (writing like this will create or overwrite the file)
-            Write stations-filename ( first rest\from source 3 )
-
-        ; open the file in append mode so that further writes will add to the file instead of overwriting it
-        destination: Open\append stations-filename
-
-        for rest\from source 4 { ::row newline ++ row |Write* destination }	
-
-        Close destination
-    }
-    print "\n Station List retrieved!"
-}
-
+stations-filename: %StationList.csv
 
 ; filter the station list to make it easier to pick the specific station of interest
-print gap 3
 station-name: input "Enter Station Name: "
 
 station-list: Load\csv %StationList.csv
@@ -66,7 +34,7 @@ station-list: Load\csv %StationList.csv
 |where-contains 'Name to-upper station-name |order-by 'LastYear 'desc
 
 ; display the filtered list for the user to choose from and retrieve the relevant data
-print gap 3
+u/gap 3
 station-row: display station-list
 
 ; No point continuing if the user didn't select a station
@@ -87,7 +55,7 @@ last-year: min [ ( station-row -> "LastYear" ) ( year? now ) ]
 ; build and display a list of years for the user to choose from
 year-list:: range first-year last-year
 
-print gap 3
+u/gap 3
 print "Select year to start:"
 first: display year-list
 
@@ -96,7 +64,7 @@ if not ( first .type? .to-string = "integer" ) {
     exit "\n No year selected!"
 }
 
-print gap 3
+u/gap 3
 print "Select year to end:"
 year-list:: range first last-year ; exclude years earlier than first-year
 last: display reverse year-list ; reverse the list to put most recent years at the top
@@ -112,37 +80,45 @@ station-file: to-uri file-name ++ "_" ++ first ++
 
 refresh:: true
 if station-file .Does-exist {
-     print gap 3
+     u/gap 3
      print "The data file for this station already exists. Do you want to refresh it?"
     refresh:: ( flui/select dict [ "No" "Do not refresh the data for this station." "Yes" "Refresh the data for this station." ] ) = "Yes"
 }
 
 if refresh {
     ; I don't know if using files to help with processing is sensible, but it's a LOT simpler than what I was doing before.
-    print newline
+    u/gap 1
     term/spin-it "Getting station data." {
         Get to-uri [ station-id first ] .format daily-source |replace "\"" "" |Write* station-file
         station-table:: Load\csv station-file ; mod word because it seems like the easiest way to keep the table updated
+            ; generally, if there is no temperature data then there is no other data
+            ; if there is, it's no great loss because there aren't really that many rows without temperature data
+            ; the main exception is when getting data for the current year, where everything after "today" will be completely blank
+            |where-not-equal "Min Temp (°C)" ""
+            |where-not-equal "Max Temp (°C)" ""
         for range  inc first last {
             ::year
             Get to-uri [ station-id year ] .format daily-source |replace "\"" "" |Write* station-file
             temp-table:: Load\csv station-file ; I used to use a temp file, but realized that I can just reuse the main one
+                |where-not-equal "Min Temp (°C)" ""
+                |where-not-equal "Max Temp (°C)" ""
             station-table:: station-table .add-rows temp-table .get-rows
         }
 
         Save\csv station-file station-table 
     }
 }
-print gap 3
+u/gap 3
 print join [ os/cwd? .to-string "/" to-string station-file " is ready to use." ]
 print "Most spreadsheet and database programs have the ability to import .CSV files as tables."
-print join [ newline newline newline ]
+u/gap 3
 print "XLSX files are a native Excel format, but are more portable to other applications than plain XLS files."
 print "Do you want this as an XLSX file, too?"
 
 if ( flui/select dict [ "Yes" "Give me an XLSX file, too." "No" "Do not give me an XLSX file." ] ) = "Yes" {
     xlsx-file: to-uri join [ station-file .Stem? ".xlsx" ]
     Load\csv station-file |Save\xlsx* xlsx-file
-    print join [ newline os/cwd? .to-string "/" to-string xlsx-file " is ready to use." ]
+    u/gap 1
+    print join [ os/cwd? .to-string "/" to-string xlsx-file " is ready to use." ]
 }
-print "\n DONE!"
+u/gap 1
